@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Webcam Test</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        #video {
+            background: #f0f0f0;
+            border-radius: 8px;
+            max-width: 100%;
+        }
+        #snapshot {
+            display: none;
+            max-width: 100%;
+            border-radius: 8px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #ccc;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        #deviceSelect {
+            padding: 8px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Webcam Test</h1>
+        <div id="status" class="status"></div>
+        <select id="deviceSelect"></select>
+        <video id="video" width="640" height="480" autoplay playsinline></video>
+        <canvas id="snapshot" width="640" height="480"></canvas>
+        <div class="controls">
+            <button id="startBtn">Start Camera</button>
+            <button id="switchBtn" disabled>Switch Camera</button>
+            <button id="snapBtn" disabled>Take Snapshot</button>
+            <button id="downloadBtn" disabled>Download Snapshot</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('snapshot');
+        const deviceSelect = document.getElementById('deviceSelect');
+        const startBtn = document.getElementById('startBtn');
+        const switchBtn = document.getElementById('switchBtn');
+        const snapBtn = document.getElementById('snapBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusDiv = document.getElementById('status');
+        
+        let stream = null;
+        let devices = [];
+
+        // Show status messages
+        function showStatus(message, isError = false) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${isError ? 'error' : 'success'}`;
+        }
+
+        // Populate device selection dropdown
+        async function getDevices() {
+            try {
+                const deviceList = await navigator.mediaDevices.enumerateDevices();
+                devices = deviceList.filter(device => device.kind === 'videoinput');
+                
+                deviceSelect.innerHTML = '';
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Camera ${deviceSelect.length + 1}`;
+                    deviceSelect.appendChild(option);
+                });
+
+                switchBtn.disabled = devices.length <= 1;
+            } catch (err) {
+                showStatus('Error getting camera devices: ' + err.message, true);
+            }
+        }
+
+        // Start the webcam stream
+        async function startCamera() {
+            try {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+
+                const constraints = {
+                    video: {
+                        deviceId: deviceSelect.value ? { exact: deviceSelect.value } : undefined
+                    }
+                };
+
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                
+                // Enable controls
+                snapBtn.disabled = false;
+                switchBtn.disabled = devices.length <= 1;
+                startBtn.textContent = 'Stop Camera';
+                
+                showStatus('Camera started successfully');
+                
+                // Get devices after permission is granted
+                await getDevices();
+            } catch (err) {
+                showStatus('Error accessing camera: ' + err.message, true);
+            }
+        }
+
+        // Take a snapshot
+        function takeSnapshot() {
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.style.display = 'block';
+            video.style.display = 'none';
+            downloadBtn.disabled = false;
+            snapBtn.textContent = 'Retake';
+            showStatus('Snapshot taken');
+        }
+
+        // Download snapshot
+        function downloadSnapshot() {
+            const link = document.createElement('a');
+            link.download = 'webcam-snapshot.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+                video.srcObject = null;
+                startBtn.textContent = 'Start Camera';
+                snapBtn.disabled = true;
+                switchBtn.disabled = true;
+                showStatus('Camera stopped');
+            } else {
+                startCamera();
+            }
+        });
+
+        snapBtn.addEventListener('click', () => {
+            if (canvas.style.display === 'block') {
+                canvas.style.display = 'none';
+                video.style.display = 'block';
+                downloadBtn.disabled = true;
+                snapBtn.textContent = 'Take Snapshot';
+            } else {
+                takeSnapshot();
+            }
+        });
+
+        downloadBtn.addEventListener('click', downloadSnapshot);
+        deviceSelect.addEventListener('change', () => {
+            if (stream) startCamera();
+        });
+
+        // Check for WebRTC support
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showStatus('WebRTC is not supported in your browser', true);
+            startBtn.disabled = true;
+        } else {
+            getDevices();
+        }
+    </script>
+</body>
+</html>
